@@ -14,62 +14,69 @@ sys.path.insert(0, os.path.abspath('..'));
 
 BUFFER_SIZE = 100000
 
-labels = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+labels = " 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 
 class DataLoader():
     
-    def __init__(self, batch_size, data_path_1="annotations.csv",
-                 data_path_2="y_true.csv",
-                 data_path_3="word_images/data/",
+    def __init__(self, batch_size, 
+                 annotations_path="annotations.csv",
+                 images_path="word_images/data/",
                  seed=23, valid_split=.2, test_split=.2):
-        annots_raw = pd.read_csv(data_path_1)
-        labels_raw = pd.read_csv(data_path_2)
-        df_raw = pd.merge(annots_raw, labels_raw, on='index')
-        df_raw["index"] = df_raw["index"].map(lambda x: '{}{}.png'.format(data_path_3, x))
-        df_raw.rename(columns={"index": "path"}, inplace =True)
-        df_raw['path'] = df_raw['path'].astype('|S').str.decode("utf-8")
-        df_raw['annotation'] = df_raw['annotation'].astype('|S').str.decode("utf-8")
-        df, df_test = train_test_split(df_raw, test_size=test_split, 
+        annots_raw = pd.read_csv(annotations_path)
+        annots_raw["index"] = annots_raw["index"].map(
+                lambda x: '{}{}.png'.format(images_path, x))
+        annots_raw.rename(columns={"index": "path"}, inplace =True)
+        annots_raw['path'] = \
+        annots_raw['path'].astype('|S').str.decode("utf-8")
+        annots_raw['annotation'] = \
+        annots_raw['annotation'].astype('|S').str.decode("utf-8")
+        max_str_len = max(annots_raw['annotation'].str.len())
+        
+        df, test = train_test_split(annots_raw, test_size=test_split, 
                                        random_state=seed)
-        df_train, df_valid = train_test_split(df, test_size=valid_split,
+        train, valid = train_test_split(df, test_size=valid_split,
                                               random_state=seed)
-        df_train = df_train[:int(len(df_train)*.05)]
-        df_valid = df_valid[:int(len(df_valid)*.05)]
-        df_test = df_test[:int(len(df_test)*.05)]
-        self.x_train = df_train["path"]
-        self.y_train = df_train['annotation']
-        self.label_train = df_train[[str(i) for i in range(31)]]
-        self.x_valid = df_valid["path"]
-        self.y_valid = df_valid['annotation']
-        self.label_valid = df_valid[[str(i) for i in range(31)]]
-        self.x_test = df_test["path"]
-        self.y_test = df_test['annotation']
-        self.label_test = df_test[[str(i) for i in range(31)]]
+        train = train[:int(len(train)*.05)]
+        valid = valid[:int(len(valid)*.05)]
+        test = test[:int(len(test)*.05)]
+        
+        vf = np.vectorize(partial(labels_to_index_list, 
+                                  max_str_len=max_str_len))
+        
+        y_train_list = train['annotation'].to_numpy()
+        y_train = vf(y_train_list)
+        y_train = np.array([x.astype('int32') for x in y_train])
+        
+        y_valid_list = valid['annotation'].to_numpy()
+        y_valid = vf(y_valid_list)
+        y_valid = np.array([x.astype('int32') for x in y_valid])
+        
+        y_test_list = test['annotation'].to_numpy()
+        y_test = vf(y_test_list)
+        y_test = np.array([x.astype('int32') for x in y_test])
+        
+        self.x_train = train["path"]
+        self.y_train = y_train
+        self.x_valid = valid["path"]
+        self.y_valid = y_valid
+        self.x_test = test["path"]
+        self.y_test = y_test
         self.seed=seed
         self.batch_size=batch_size
+        self.max_str_len = max_str_len
         
     def load_text_data(self, type="train"):
         if type=="test":
             paths = self.x_test
-            annots = self.y_test
-            labels = self.label_test.values
+            index_list = self.y_test
         elif type=="valid":
             paths = self.x_valid
-            annots = self.y_valid
-            labels = self.label_valid.values
+            index_list = self.y_valid
         else:
             paths = self.x_train
-            annots = self.y_train
-            labels = self.label_train.values
-        time_slices = 32
-        input_lengths = [time_slices]*len(annots)#[[time_slices]]*len(annots)
-        label_lengths = annots.str.len()#.to_numpy().reshape(len(annots), 1)
+            index_list = self.y_train
         steps_per_epoch = np.ceil(len(paths)/self.batch_size)
-        input_targets = make_ds(paths,
-                                labels,
-                                input_lengths,
-                                label_lengths,
-                                annots, 
+        input_targets = make_ds(paths, index_list, 
                                 seed=self.seed)
         imgs_targets = input_targets.map(load_image,
                                          num_parallel_calls=AUTOTUNE)
@@ -77,6 +84,26 @@ class DataLoader():
                                         num_parallel_calls=AUTOTUNE)
         ds = imgs_targets.batch(self.batch_size).prefetch(buffer_size=AUTOTUNE)
         return ds, steps_per_epoch
+    
+def standard_scaler(images, index_list):
+    images = tf.cast(images, tf.float16)
+    images = images/255.0 - .5
+    return images, index_list
+
+def make_ds(paths, index_list, seed):
+    ds = tf.data.Dataset.from_tensor_slices((paths, index_list)).cache()
+    ds = ds.shuffle(BUFFER_SIZE, seed=seed).repeat()
+    return ds
+
+def load_image(paths, index_list, channels=1):
+    images = tf.io.read_file(paths)
+    images = tf.image.decode_jpeg(images, channels=channels)
+    images = tf.cast(images, tf.uint8)
+    return images, index_list
+    
+    
+    
+# Emnist loader
         
 def load_emnist(batch_size, onehot=True, 
                 valid_split=.2, data_path="characters/emnist-byclass.mat"):
@@ -154,25 +181,12 @@ def one_hot(img, outputs, num_classes):
     new_outputs = tf.one_hot(outputs, num_classes)
     return img, new_outputs
 
-def standard_scaler(inputs, outputs):
-    img = tf.cast(inputs[0], tf.float16)
-    img = img/255.0 - .5
-    new_inputs = (img, inputs[1], inputs[2], inputs[3])
-    return new_inputs, outputs
-
-def make_ds(paths, labels, input_lengths, label_lengths, outputs, seed):
-    inputs = (paths, labels, input_lengths, label_lengths)
-    ds = tf.data.Dataset.from_tensor_slices((inputs, outputs)).cache()
-    ds = ds.shuffle(BUFFER_SIZE, seed=seed).repeat()
-    return ds
-
-def load_image(inputs, output, channels=1):
-    img = tf.io.read_file(inputs[0])
-    img = tf.image.decode_jpeg(img, channels=channels)
-    img = tf.cast(img, tf.uint8)
-    new_inputs = (img, inputs[1], inputs[2], inputs[3])
-    #tf.print(inputs[1], output_stream=sys.stdout, summarize=31)
-    return new_inputs, output
+def labels_to_index_list(text, max_str_len):
+    initial_text_len = len(text)
+    text = text + " "*(max_str_len-initial_text_len)
+    index_list = [labels.index(char) for char in text]
+    index_list.append(initial_text_len)
+    return np.array(index_list, dtype=object)
 
 if __name__=="__main__":
 # =============================================================================
@@ -180,8 +194,19 @@ if __name__=="__main__":
 #     num_classes, steps_per_epoch, validation_steps = load_emnist(32)
 # =============================================================================
     data = DataLoader(2)
-# =============================================================================
-#     train_gen = data.load_text_data()
-#     valid_gen = data.load_text_data(type="valid")
-#     test_gen = data.load_text_data(type="test")
-# =============================================================================
+    
+    gen, steps = data.load_text_data()
+    for input, y_true in gen.take(1):
+        #print(input)
+        #print("---------------------")
+        print(y_true)
+        y_true = y_true.numpy().astype(np.int32)
+        # the labels length is set at the last index of every y_true
+        label_length = \
+        np.array([i[-1] for i in y_true]).astype(np.int32)
+        print(label_length)
+        labels = np.zeros(
+            (len(label_length), np.max(label_length))).astype(np.int64)
+        for nxd, i in enumerate(y_true):
+            labels[nxd, :i[-1]] = i[:i[-1]].astype(np.int64)
+        print(labels)

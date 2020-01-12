@@ -5,16 +5,17 @@ from tensorflow.keras.optimizers import SGD, Adam
 from tensorflow.keras.layers import (
     Input, Conv2D, Dense, MaxPool2D,
     Dropout, BatchNormalization, Activation,
-    Reshape, Conv1D, GRU, Bidirectional,
-    Lambda
+    Reshape, Conv1D, GRU, Bidirectional
 )
 from tensorflow.keras.models import Model
 import sys, os; 
 sys.path.insert(0, os.path.abspath('..'));
 from layers.residual import Residual
-from loss_functions.ctc_loss import ctc_loss
+from loss_functions.ctc_loss import CTCLoss
+from metrics.string_similarity import LevenshteinMetric
 
-def CRNN(n_classes, optimizer_type="sgd", training=True,
+def CRNN(n_classes, batch_size, 
+         optimizer_type="sgd", training=True,
          lr=.001, reg=1e-6, dropout_chance=0.2):
     
     DefaultConv2D = partial(Conv2D,
@@ -23,10 +24,6 @@ def CRNN(n_classes, optimizer_type="sgd", training=True,
                             kernel_regularizer=l2(reg),
                             padding="same")
     
-    labels = Input((31,), name='labels', dtype='int64') # (None , 31) Max text length is 31
-    input_length = Input((), name='input_length', dtype='int32') # (None)
-    label_length = Input((), name='label_length', dtype='int32') # (None)
-
     images = Input(shape=(128,32,1), name='images')
     x = Dropout(0.2)(images)
     
@@ -66,24 +63,13 @@ def CRNN(n_classes, optimizer_type="sgd", training=True,
     x = BatchNormalization()(x)
     
     y_pred = Dense(n_classes,
-              activation="softmax")(x) # (None, 32, 63)
+                   activation="softmax",
+                   name="logits_layer")(x) # (None, 32, 63)
     
-    loss_out = Lambda(ctc_loss, 
-                      output_shape=(1,), 
-                      name='ctc')([labels, y_pred, input_length, label_length]) #(None, 1)
+    model = Model(inputs=images, 
+                  outputs=y_pred)
     
-    if training:
-        model = Model(inputs=[images, labels, input_length, label_length], 
-                      outputs=loss_out)
-    else:
-        model = Model(inputs=[images], outputs=y_pred)
-    
-# =============================================================================
-#     ctc_loss_fn = partial(ctc_loss,
-#                           labels=labels,
-#                           label_length=label_length,
-#                           input_length=input_length)
-# =============================================================================
+    logit_length = [model.layers[-1].output_shape[1]] * batch_size 
     
     # Optimizer
     if optimizer_type == "sgd":
@@ -93,19 +79,14 @@ def CRNN(n_classes, optimizer_type="sgd", training=True,
     elif optimizer_type == "adam":
         optimizer = Adam(lr=lr)
 
-# =============================================================================
-#     #TODO implement bleu score metric, implement ctc beam search loss
-#     model.compile(loss=ctc_loss_fn,
-#                   optimizer=optimizer)
-# =============================================================================
-        
     #TODO implement bleu score metric, implement ctc beam search loss
-    model.compile(loss={'ctc': lambda y_true, y_pred: y_pred},
-                  optimizer=optimizer)
+    model.compile(loss=CTCLoss(logit_length=logit_length),
+                  optimizer=optimizer,
+                  metrics=[LevenshteinMetric()])
     
     print(model.summary())
     
     return model
 
 if __name__=="__main__":
-    CRNN(63)
+    model = CRNN(63, 32)
