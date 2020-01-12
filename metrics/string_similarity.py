@@ -12,13 +12,11 @@ class LevenshteinMetric(Metric):
         super().__init__(**kwargs)
         self.levenshtein_distance_fn = levenshtein_distance_fn
         self.total = self.add_weight("total", initializer="zeros")
-        self.count = self.add_weight("total", initializer="zeros")
+        self.count = self.add_weight("count", initializer="zeros")
     def update_state(self, y_true, y_pred, sample_weight=None):
         metric = self.levenshtein_distance_fn(y_true, y_pred)
-# =============================================================================
-#         self.total.assign_add(tf.reduce_sum(metric))
-#         self.count.assign_add(tf.size(y_true))
-# =============================================================================
+        self.total.assign_add(tf.reduce_sum(metric))
+        self.count.assign_add(tf.cast(len(y_true), tf.float32))
     def result(self):
         return self.total / self.count
 
@@ -32,30 +30,43 @@ def levenshtein_distance_fn(y_true, y_pred):
     returns:
     levenshtein distance between y_true and predicted string
     '''    
-    index_tensor = tf.math.argmax(y_pred, axis=2)
-    pred_text_raw = tf.map_fn(convert_to_text, index_tensor, dtype=tf.string)
-    tf.print(pred_text_raw)
-# =============================================================================
-#     pred_text = tf.map_fn(remove_blanks_and_duplicates, pred_text_raw)
-#     
-#     true_text = get_labels(y_true)
-#     
-#     true_text = tf.expand_dims(true_text, 0)
-#     pred_text = tf.expand_dims(pred_text, 0)
-#     all_text = tf.concat([true_text, pred_text], axis=0)
-#     all_text = tf.transpose(all_text)
-#     
-#     tf.print(tf.map_fn(calc_norm_lev, all_text, dtype=tf.float32))
-# =============================================================================
-    return 1
+    pred_index_tensor = tf.math.argmax(y_pred, axis=2)
+    true_index_tensor = get_labels(y_true)
 
-@tf.function
-def convert_to_text(index_list):
-    '''
-    index_tensor - [timestep]
-    '''
-    labels_list = tf.map_fn(index_to_label, index_list, dtype=tf.string)
-    return tf.strings.reduce_join(labels_list, axis=0)
+
+    # not able to run on gpu for some reason
+    with tf.device('/cpu:0'):
+        pred_text_raw = tf.map_fn(
+                lambda index_list: convert_to_text(index_list), 
+                pred_index_tensor, dtype=tf.string)
+        pred_text = tf.map_fn(
+                lambda text: remove_blanks_and_duplicates(text), 
+                pred_text_raw)
+        
+        true_text_raw = tf.map_fn(
+                lambda index_list: convert_to_text(index_list), 
+                true_index_tensor, dtype=tf.string)
+        true_text = tf.map_fn(
+                lambda text: remove_blanks_and_duplicates(text), 
+                true_text_raw)
+    
+    pred_text = tf.expand_dims(pred_text, 0)
+    true_text = tf.expand_dims(true_text, 0)
+    
+    all_text = tf.concat([true_text, pred_text], axis=0)
+    all_text = tf.transpose(all_text)
+    
+    with tf.device('/cpu:0'):
+        score = tf.map_fn(lambda args: calc_norm_lev(args), 
+                          all_text, dtype=tf.float32)
+    return score
+
+@tf.function(autograph=False)
+def convert_to_text(data):
+    def py_convert_to_text(index_list):
+        labels_list = tf.map_fn(index_to_label, index_list, dtype=tf.string)
+        return tf.strings.reduce_join(labels_list, axis=0)
+    return tf.py_function(py_convert_to_text, [data], tf.string)
 
 @tf.function(autograph=False)
 def index_to_label(data):
@@ -63,18 +74,22 @@ def index_to_label(data):
         return labels[index] if index > 0 else " "
     return tf.py_function(py_index_to_label, [data], tf.string)
 
-def remove_blanks_and_duplicates(text):
-    decoded_text = text.numpy().decode("utf-8").split()
-    return "".join(["".join(sorted(set(x), key=x.index)) 
-                    for x in decoded_text])
-    
-def calc_norm_lev(args):
-    y_true, y_pred = args
-    
-    y_true = y_true.numpy().decode("utf-8")
-    y_pred = y_pred.numpy().decode("utf-8")
-    
-    return norm_lev.distance(y_true, y_pred)
+@tf.function(autograph=False)
+def remove_blanks_and_duplicates(data):
+    def py_remove_blanks_and_duplicates(text):
+        decoded_text = text.numpy().decode("utf-8").split()
+        return "".join(["".join(sorted(set(x), key=x.index)) 
+                        for x in decoded_text])
+    return tf.py_function(py_remove_blanks_and_duplicates, [data], tf.string)
+
+@tf.function(autograph=False)
+def calc_norm_lev(data):
+    def py_calc_norm_lev(args):
+        y_true, y_pred = args
+        y_true = y_true.numpy().decode("utf-8")
+        y_pred = y_pred.numpy().decode("utf-8")
+        return norm_lev.distance(y_true, y_pred)
+    return tf.py_function(py_calc_norm_lev, [data], tf.float32)
 
 @tf.function(autograph=False)
 def get_labels(data):
@@ -88,7 +103,7 @@ def get_labels(data):
         for nxd, i in enumerate(y_true):
             labels[nxd, :i[-1]] = i[:i[-1]].astype(np.int32)
         return labels
-    return tf.py_function(py_get_labels, [data], (tf.int64, tf.int32))
+    return tf.py_function(py_get_labels, [data], tf.int32)
 
 if __name__=="__main__":
     y_pred = tf.constant(["add d ff f", "hhee lll lo"])
