@@ -32,13 +32,26 @@ class DataLoader():
         annots_raw['annotation'].astype('|S').str.decode("utf-8")
         max_str_len = max(annots_raw['annotation'].str.len())
         
+        annots_raw = annots_raw[466000:]
+        
         df, test = train_test_split(annots_raw, test_size=test_split, 
                                        random_state=seed)
         train, valid = train_test_split(df, test_size=valid_split,
                                               random_state=seed)
-        train = train[:int(len(train)*.05)]
-        valid = valid[:int(len(valid)*.05)]
-        test = test[:int(len(test)*.05)]
+# =============================================================================
+#         train = train[:int(len(train)*.00005)]
+#         valid = valid[:int(len(valid)*.00005)]
+#         test = test[:int(len(test)*.00005)]
+# =============================================================================
+        
+        train = annots_raw[-1:]
+        valid = valid[:1]
+        test = test[:1]
+        
+        print(train)
+        print(valid)
+        print(test)
+        
         
         vf = np.vectorize(partial(labels_to_index_list, 
                                   max_str_len=max_str_len))
@@ -99,6 +112,7 @@ def load_image(paths, index_list, channels=1):
     images = tf.io.read_file(paths)
     images = tf.image.decode_jpeg(images, channels=channels)
     images = tf.cast(images, tf.uint8)
+    images = tf.transpose(images, [1, 0, 2])
     return images, index_list
     
     

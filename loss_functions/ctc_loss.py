@@ -19,6 +19,9 @@ class CTCLoss(tf.losses.Loss):
             logits_time_major=self.logits_time_major,
             blank_index=self.blank_index
         ))
+    def get_config(self):
+        base_config = super().get_config()
+        return base_config
     
 @tf.function(autograph=False)
 def get_labels(data):

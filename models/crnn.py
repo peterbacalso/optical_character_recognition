@@ -21,33 +21,55 @@ def CRNN(n_classes, batch_size,
     DefaultConv2D = partial(Conv2D,
                             kernel_size=3,
                             kernel_initializer="he_normal",
-                            kernel_regularizer=l2(reg),
+                            #kernel_regularizer=l2(reg),
                             padding="same")
     
     images = Input(shape=(128,32,1), name='images')
-    x = Dropout(0.2)(images)
+    #x = Dropout(0.2)(images)
     
-    x = DefaultConv2D(filters=64)(x) # (None, 128, 32, 64)
-    x = BatchNormalization()(x)
-    x = Activation(activation="relu")(x)
-    x = DefaultConv2D(filters=64)(x)
+    x = DefaultConv2D(kernel_size=5,filters=32)(images) # (None, 128, 32, 32)
     x = BatchNormalization()(x)
     x = Activation(activation="relu")(x)
     x = MaxPool2D(pool_size=2)(x) 
     
-    for filters in [64] * 3:   # (None, 64, 16, 64)
-        x = Residual(filters)(x)
+    x = DefaultConv2D(filters=64)(x) # (None, 64, 16, 64)
+    x = BatchNormalization()(x)
+    x = Activation(activation="relu")(x)
+    x = MaxPool2D(pool_size=2)(x)
+    
+    x = DefaultConv2D(filters=128)(x) # (None, 32, 8, 128)
+    x = BatchNormalization()(x)
+    x = Activation(activation="relu")(x)
+    x = MaxPool2D(pool_size=(1,2))(x)
+    
+    x = DefaultConv2D(filters=128)(x) # (None, 32, 4, 128)
+    x = BatchNormalization()(x)
+    x = Activation(activation="relu")(x)
+    x = MaxPool2D(pool_size=(1,2))(x)
+    
+    x = DefaultConv2D(filters=256)(x) # (None, 32, 2, 256)
+    x = BatchNormalization()(x)
+    x = Activation(activation="relu")(x)
+    x = MaxPool2D(pool_size=(1,2))(x) # (None, 32, 1, 256)
 
-    x = Residual(128, strides=2)(x) # (None, 32, 8, 128)
-    for filters in [128] * 4:
-        x = Residual(filters)(x)
+    
+# =============================================================================
+#     for filters in [128] * 4:
+#         x = Residual(filters)(x)
+# 
+#     x = Residual(256, strides=2)(x) # (None, 32, 4, 256)
+#     for filters in [256] * 5:
+#         x = Residual(filters)(x)
+#         
+#     x = MaxPool2D(pool_size=(1,2))(x) # (None, 32, 2, 256)
+# =============================================================================
         
     # CNN to RNN
-    x = Reshape((32,1024))(x) # (None, 32, 2048)
-    x = Conv1D(filters=64, 
+    x = Reshape((32,256))(x) # (None, 32, 256)
+    x = Conv1D(filters=256, 
                kernel_size=5,
                kernel_initializer="he_normal",
-               padding="same")(x) # (None, 32, 64)
+               padding="same")(x)
     
     # RNN
     x = Bidirectional(
@@ -61,6 +83,7 @@ def CRNN(n_classes, batch_size,
                 return_sequences=True, 
                 kernel_initializer="he_normal"))(x)  # (None, 32, 512)
     x = BatchNormalization()(x)
+    
     
     y_pred = Dense(n_classes,
                    activation="softmax",
@@ -82,7 +105,7 @@ def CRNN(n_classes, batch_size,
     #TODO implement bleu score metric, implement ctc beam search loss
     model.compile(loss=CTCLoss(logit_length=logit_length),
                   optimizer=optimizer,
-                  metrics=[LevenshteinMetric()])
+                  metrics=[LevenshteinMetric(batch_size=batch_size)])
     
     print(model.summary())
     
