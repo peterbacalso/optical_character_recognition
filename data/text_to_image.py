@@ -3,6 +3,8 @@ import numpy as np
 import pandas as pd
 import re
 import random
+import time
+import csv
 
 from functools import partial
 from pathlib import Path
@@ -26,11 +28,12 @@ class Text_Converter():
         classes = list(numbers + letters_upper + letters_lower + special)
         index_dict = {k: v for v, k in enumerate(classes)}
         
+        self.classes = classes
         self.np_train = np_train
         self.np_test = np_test
         self.index_dict = index_dict
         
-    def to_image(self, word, source="emnist"):
+    def to_image(self, word, save_dir, source="emnist", img_type='jpg'):
         if source == "emnist":
             letter_index_list = [self.index_dict[char] for char in word]
             letter_img_list = []
@@ -52,20 +55,27 @@ class Text_Converter():
             word_array = np.concatenate(letter_img_list,axis=1)
             word_img = Image.fromarray(word_array)
             word_img = word_img.convert("L")
-            word_img.save(f'word_images_emnist/{word}.png')
+            word_img.save(f'{save_dir}/{word}.{img_type}')
         elif source == "font":
-            word_img = Image.new('L', (len(word)*12+30,28))
+            W, H = (32,32)
+            word_img = Image.new('L', (W,H))
             p = Path('fonts')
             all_p = searching_all_files(p)
-            index = random.randint(0, len(all_p)) - 1
-            fnt = ImageFont.truetype(str(all_p[index]), 15)
-            d = ImageDraw.Draw(word_img)
-            word_pixel_size = d.textsize(word, font=fnt)
-            word_img.resize(word_pixel_size)
-            d = ImageDraw.Draw(word_img)
-            d.text((word_pixel_size[0]//2,word_pixel_size[1]//3), 
-                   word, font=fnt, fill=(255))
-            word_img.save(f'word_images/fonts/{word}_.png')
+            font_index = random.randint(0, len(all_p)) - 1
+            fnt = ImageFont.truetype(str(all_p[font_index]), 15)
+            draw = ImageDraw.Draw(word_img)
+            w, h = draw.textsize(word, font=fnt)
+            draw.text(((W-w)/2,(H-h)/2), 
+                      word, font=fnt, fill=(255))
+            #word_img.save(f'{save_dir}/{word}.{img_type}')
+            word_matrix = np.array(word_img)
+            word_matrix = word_matrix.flatten()
+
+            row = np.concatenate((np.array([word]), word_matrix))
+            annotations = [row]
+            with open('char_font_dataset.csv', 'a', newline='') as file:
+                writer = csv.writer(file)
+                writer.writerows(annotations)
 
 def searching_all_files(directory: Path):   
     file_list = [] # A list for storing files existing in directories
@@ -78,18 +88,46 @@ def searching_all_files(directory: Path):
         
 def to_alphanum(word):
     return re.sub('[^A-Za-z0-9]+', '', word)
+
+def index_to_label(index, label_list):
+    return label_list[index]
         
 if __name__=="__main__":
-    data = pd.read_csv('words.txt', sep="\n", header=None, 
-                       squeeze=True, dtype=str)
-    data = data.astype('str') 
-    data = data.map(to_alphanum)
-    data = data.drop_duplicates()
-    data = data.drop([data[data=="Con"].index[0], 
-                      data[data=="prn"].index[0]]) # causes error for some reason
-    data = data.reset_index(drop = True)
+    
+# =============================================================================
+#     # words dataset
+#     data = pd.read_csv('words.txt', sep="\n", header=None, 
+#                        squeeze=True, dtype=str)
+#     data = data.astype('str') 
+#         data = data.map(to_alphanum)
+#     data = data.drop_duplicates()
+#     data = data.drop([data[data=="Con"].index[0], 
+#                       data[data=="prn"].index[0]]) # causes error for some reason
+#     data = data.reset_index(drop = True)
+#     #data.map(partial(txt_converter.to_image, save_dir='word_images_emnist')) #generate word images using emnist
+#     data.map(partial(txt_converter.to_image, 
+#                      save_dir='word_images/fonts', 
+#                      source="font")) #generate word images using fonts
+# =============================================================================
+    
+    start = time.time()
+    # char dataset
+    char_data_indices = np.random.randint(62, size=1)
     txt_converter = Text_Converter()
-    #data.map(txt_converter.to_image) #generate word images using emnist
-    data.map(partial(txt_converter.to_image, source="font")) #generate word images using fonts
+    to_label = np.vectorize(partial(index_to_label, 
+                                    label_list=txt_converter.classes))
+    char_data = to_label(char_data_indices)
+    char_series = pd.Series(char_data)
+    #char_df = char_series.reset_index()
+    char_series.map(partial(txt_converter.to_image, 
+                            save_dir='characters/font', 
+                            source="font"))
+# =============================================================================
+#     char_df.apply(partial(txt_converter.to_image, 
+#                           save_dir='characters/font', 
+#                           source="font"), axis=1)
+# =============================================================================
+    end = time.time()
+    print(end - start)
     
 

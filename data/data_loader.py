@@ -1,4 +1,5 @@
 import numpy as np
+import cv2
 import pandas as pd
 import tensorflow as tf
 
@@ -88,6 +89,7 @@ class DataLoader():
         else:
             paths = self.x_train
             index_list = self.y_train
+            
         steps_per_epoch = np.ceil(len(paths)/self.batch_size)
         input_targets = make_ds(paths, index_list, 
                                 seed=self.seed)
@@ -96,6 +98,7 @@ class DataLoader():
         imgs_targets = imgs_targets.map(standard_scaler, 
                                         num_parallel_calls=AUTOTUNE)
         ds = imgs_targets.batch(self.batch_size).prefetch(buffer_size=AUTOTUNE)
+        
         return ds, steps_per_epoch
     
 def standard_scaler(images, index_list):
@@ -110,90 +113,11 @@ def make_ds(paths, index_list, seed):
 
 def load_image(paths, index_list, channels=1):
     images = tf.io.read_file(paths)
-    images = tf.image.decode_jpeg(images, channels=channels)
+    #images = tf.image.decode_jpeg(images, channels=channels)
+    images = tf.io.decode_png(images, channels=channels)
     images = tf.cast(images, tf.uint8)
-    images = tf.transpose(images, [1, 0, 2])
+    #images = tf.transpose(images, [1, 0, 2])
     return images, index_list
-    
-    
-    
-# Emnist loader
-        
-def load_emnist(batch_size, onehot=True, 
-                valid_split=.2, data_path="characters/emnist-byclass.mat"):
-    emnist = spio.loadmat(data_path)
-    num_classes = 62
-    buffer_size=100000
-    seed=23
-    
-    # load training dataset
-    x_raw = emnist["dataset"][0][0][0][0][0][0]
-    x_raw = x_raw.astype(np.float32)
-    # load training labels
-    y_raw = emnist["dataset"][0][0][0][0][0][1]
-    y_raw = y_raw.flatten()
-    
-    x_train, x_valid, y_train, y_valid = \
-    train_test_split(x_raw, y_raw, test_size=valid_split)
-    
-    # load test dataset
-    x_test = emnist["dataset"][0][0][1][0][0][0]
-    x_test = x_test.astype(np.float32)
-    # load test labels
-    y_test = emnist["dataset"][0][0][1][0][0][1]
-    y_test = y_test.flatten()
-    
-    # Preprocess input data, reshape using matlab order
-    x_train = x_train.reshape(x_train.shape[0], 28, 28, 1, order="A")
-    x_valid = x_valid.reshape(x_valid.shape[0], 28, 28, 1, order="A")
-    x_test = x_test.reshape(x_test.shape[0], 28, 28, 1, order="A")
-    
-# =============================================================================
-#     # train on small portion of data
-#     x_train = x_train[:20]
-#     y_train = y_train[:20]
-# =============================================================================
-    
-    steps_per_epoch = np.ceil(len(x_train)/batch_size)
-    validation_steps = np.ceil(len(x_valid)/batch_size)
-    
-    # Oversampling
-    train_datasets = []
-    for i in range(num_classes):
-        sub_x_train = x_train[y_train==i]
-        sub_y_train = y_train[y_train==i]
-        sub_train = tf.data.Dataset\
-        .from_tensor_slices((sub_x_train, sub_y_train)).cache()
-        sub_train = sub_train.shuffle(buffer_size=buffer_size, seed=seed).repeat()
-        train_datasets.append(sub_train)
-    sampling_weights = np.ones(num_classes)*(1./num_classes)
-    train = sample_from_datasets(train_datasets, 
-                                 weights=sampling_weights, seed=seed)
-    
-    valid = tf.data.Dataset.from_tensor_slices((x_valid, y_valid)).cache()
-    valid = valid.shuffle(buffer_size=buffer_size, seed=seed).repeat()
-    
-    test = tf.data.Dataset.from_tensor_slices((x_test, y_test)).cache()
-    test = test.shuffle(buffer_size=buffer_size, seed=seed).repeat()
-    
-    if onehot:
-         train = train.map(partial(one_hot, num_classes=num_classes),
-                           num_parallel_calls=AUTOTUNE)
-         valid = valid.map(partial(one_hot, num_classes=num_classes),
-                           num_parallel_calls=AUTOTUNE)
-
-    train = train.map(standard_scaler, num_parallel_calls=AUTOTUNE)
-    valid = valid.map(standard_scaler, num_parallel_calls=AUTOTUNE)
-    test = test.map(standard_scaler, num_parallel_calls=AUTOTUNE)
-
-    train = train.batch(batch_size).prefetch(buffer_size=AUTOTUNE)
-    valid = valid.batch(batch_size).prefetch(buffer_size=AUTOTUNE)
-    test = test.batch(batch_size).prefetch(buffer_size=AUTOTUNE)
-    return train, valid, test, num_classes, steps_per_epoch, validation_steps
-
-def one_hot(img, outputs, num_classes):
-    new_outputs = tf.one_hot(outputs, num_classes)
-    return img, new_outputs
 
 def labels_to_index_list(text, max_str_len):
     initial_text_len = len(text)
@@ -203,24 +127,24 @@ def labels_to_index_list(text, max_str_len):
     return np.array(index_list, dtype=object)
 
 if __name__=="__main__":
-# =============================================================================
-#     train, valid, test, \
-#     num_classes, steps_per_epoch, validation_steps = load_emnist(32)
-# =============================================================================
     data = DataLoader(2)
     
     gen, steps = data.load_text_data()
     for input, y_true in gen.take(1):
-        #print(input)
-        #print("---------------------")
+        print(input)
+        print("---------------------")
         print(y_true)
         y_true = y_true.numpy().astype(np.int32)
-        # the labels length is set at the last index of every y_true
-        label_length = \
-        np.array([i[-1] for i in y_true]).astype(np.int32)
-        print(label_length)
-        labels = np.zeros(
-            (len(label_length), np.max(label_length))).astype(np.int64)
-        for nxd, i in enumerate(y_true):
-            labels[nxd, :i[-1]] = i[:i[-1]].astype(np.int64)
-        print(labels)
+        print(y_true)
+# =============================================================================
+#         # the labels length is set at the last index of every y_true
+#         label_length = \
+#         np.array([i[-1] for i in y_true]).astype(np.int32)
+#         print(label_length)
+#         labels = np.zeros(
+#             (len(label_length), np.max(label_length))).astype(np.int64)
+#         for nxd, i in enumerate(y_true):
+#             labels[nxd, :i[-1]] = i[:i[-1]].astype(np.int64)
+#         print(labels)
+# 
+# =============================================================================

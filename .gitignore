@@ -7,3 +7,6 @@ data/characters/*
 checkpoints/*
 assets/*
 wandb/*
+*.spyproject*
+*.pyc
+*__pycache__*
