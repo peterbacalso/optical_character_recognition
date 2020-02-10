@@ -17,8 +17,8 @@ class LevenshteinMetric(Metric):
     def update_state(self, y_true, y_pred, sample_weight=None):
         metric = self.levenshtein_distance_fn(y_true, y_pred)
         self.total.assign_add(tf.reduce_sum(metric))
-        self.count.assign_add(tf.cast(self.batch_size, tf.float32))
-        #self.count.assign_add(tf.cast(len(y_true), tf.float32))
+        #self.count.assign_add(tf.cast(self.batch_size, tf.float32))
+        self.count.assign_add(tf.cast(len(y_true), tf.float32))
     def result(self):
         return self.total / self.count
     def get_config(self):
@@ -36,7 +36,7 @@ def levenshtein_distance_fn(y_true, y_pred):
     levenshtein distance between y_true and y_pred
     '''    
     sparse_tensor = to_sparse(y_true)
-    true_decoded = tf.sparse.SparseTensor(sparse_tensor[0], 
+    true = tf.sparse.SparseTensor(sparse_tensor[0], 
                                           sparse_tensor[1], 
                                           sparse_tensor[2])
     
@@ -45,9 +45,23 @@ def levenshtein_distance_fn(y_true, y_pred):
     y_pred_T = tf.transpose(y_pred, [1, 0, 2])
     ctcOutput = \
     tf.nn.ctc_greedy_decoder(y_pred_T, seq_lens, merge_repeated=True)
-    pred_decoded = ctcOutput[0][0] 
+# =============================================================================
+#     ctcOutput = \
+#     tf.nn.ctc_beam_search_decoder(y_pred_T, seq_lens, beam_width=50, top_paths=1)
+# =============================================================================
+    pred = ctcOutput[0][0] 
     
-    lev_dist = tf.edit_distance(true_decoded, pred_decoded, normalize=True)
+# =============================================================================
+#     true_values = index_to_label(true.values)
+#     tf.print('TRUE', true_values, summarize=32)
+#     #true_decoded = tf.SparseTensor(true.indices, true_values, true.dense_shape)
+#     
+#     pred_values = index_to_label(pred.values)
+#     tf.print('PRED', pred_values, summarize=32)
+#     #pred_decoded = tf.SparseTensor(pred.indices, pred_values, pred.dense_shape)
+#     
+# =============================================================================
+    lev_dist = tf.edit_distance(true, pred, normalize=False)
     
     return lev_dist
 
@@ -77,6 +91,21 @@ def to_sparse(data):
         return (indices, values, shape)
     return tf.py_function(py_to_sparse, [data], (tf.int64,tf.int64,tf.int64))
 
+@tf.function(autograph=False)
+def index_to_label(data):
+    def py_index_to_label(values):
+        values = tf.map_fn(index_to_label_helper, values, dtype=tf.string)
+        return [values]
+    return tf.py_function(py_index_to_label, [data], tf.string)
+
+def index_to_label_helper(index):
+    return labels[index]
+
+# =============================================================================
+# def index_to_label(index):
+#     return "ab"[index]
+# =============================================================================
+
 if __name__=="__main__":
     charList = "ab" 
     batchSize=2
@@ -88,7 +117,7 @@ if __name__=="__main__":
                   [[0,0,1],[1,0,0]]])
     b = np.array([5,5])
     
-    c = np.array([[[0,0,1],[0,1,0]],
+    c = np.array([[[1,0,0],[0,1,0]],
                   [[0,0,1],[0,0,1]],
                   [[0,1,0],[0,0,1]],
                   [[0,0,1],[0,0,1]],
@@ -116,12 +145,18 @@ if __name__=="__main__":
     
     decoded2 = ctcOutput2[0][0] 
     
-    l_d = tf.edit_distance(decoded, decoded2, normalize=True)
+    values1 = tf.map_fn(index_to_label_helper, decoded.values, dtype=tf.string)
+    labels_true = tf.SparseTensor(decoded.indices, values1, decoded.dense_shape)
+    
+    values2 = tf.map_fn(index_to_label_helper, decoded2.values, dtype=tf.string)
+    labels_pred = tf.SparseTensor(decoded2.indices, values2, decoded2.dense_shape)
+    
+    l_d = tf.edit_distance(labels_true, labels_pred, normalize=False)
+    #l_d = tf.edit_distance(decoded, decoded2, normalize=False)
     
     encodedLabelStrs = [[] for i in range(batchSize)]
     encodedLabelStrs2 = [[] for i in range(batchSize)]
     
-    print(l_d)
 # =============================================================================
 #     print(decoded.indices)
 #     print(decoded.values)
@@ -135,7 +170,7 @@ if __name__=="__main__":
     
     output = [str().join([charList[c] for c in labelStr]) \
               for labelStr in encodedLabelStrs]
-    print(output)
+    
     
     idxDict2 = { b : [] for b in range(batchSize) }
     for (idx2, idx2d2) in enumerate(decoded2.indices):
@@ -145,7 +180,10 @@ if __name__=="__main__":
     
     output2 = [str().join([charList[c] for c in labelStr]) \
               for labelStr in encodedLabelStrs2]
+    
+    print(output)
     print(output2)
+    print(l_d)
     
     
 # =============================================================================

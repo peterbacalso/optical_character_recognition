@@ -6,94 +6,88 @@ from tensorflow.keras.layers import (
     Input, Conv2D, Dense, MaxPool2D,
     Dropout, BatchNormalization, Activation,
     Reshape, Conv1D, GRU, Bidirectional,
-    Lambda
+    Lambda, Conv2DTranspose, TimeDistributed
 )
 from tensorflow.keras.models import Model
 import sys, os; 
 sys.path.insert(0, os.path.abspath('..'));
-from layers.residual import Residual
+from layers.identity_conv import identity_conv
+from layers.padder import padder
+from layers.expander import expander
 from loss_functions.ctc_loss import CTCLoss
 from metrics.string_similarity import LevenshteinMetric
+from models.cnn import CNN
 
 def CRNN(n_classes, batch_size, 
          optimizer_type="sgd", training=True,
-         lr=.001, reg=1e-6, dropout_chance=0.2):
-    
-    DefaultConv2D = partial(Conv2D,
-                            kernel_size=3,
-                            kernel_initializer="he_normal",
-                            #kernel_regularizer=l2(reg),
-                            padding="same")
+         lr=.001, reg=1e-6, dropout_chance=0.2,
+         cnn_weights_path=None):
     
     images = Input(shape=(32,128,1), name='images')
     #x = Dropout(0.2)(images)
     
-    x = DefaultConv2D(kernel_size=5,filters=32)(images) # (None, 32, 128, 32)
-    x = BatchNormalization()(x)
-    x = Activation(activation="relu")(x)
-    x = MaxPool2D(pool_size=2)(x) 
+    # extract patches of 32hx16w with stride 2
+    x = Lambda(identity_conv, 
+               arguments={'patch_size': (32,16), 'stride': 2})(images)
     
-    x = DefaultConv2D(filters=64)(x) # (None, 16, 64, 64)
-    x = BatchNormalization()(x)
-    x = Activation(activation="relu")(x)
-    x = MaxPool2D(pool_size=2)(x)
+    num_windows = x.shape[1]
+    x = Reshape((num_windows,32,16,1))(x)
     
-    x = DefaultConv2D(filters=128)(x) # (None, 8, 32, 128)
-    x = BatchNormalization()(x)
-    x = Activation(activation="relu")(x)
-    x = MaxPool2D(pool_size=(2,1))(x)
+    # expand width-wise 32x16 to 32x32
+    x = TimeDistributed(Lambda(expander), name="expander")(x) # (None, 32, 32, 1)
     
-    x = DefaultConv2D(filters=128)(x) # (None, 4, 32, 128)
-    x = BatchNormalization()(x)
-    x = Activation(activation="relu")(x)
-    x = MaxPool2D(pool_size=(2,1))(x)
+# =============================================================================
+#     # pad width-wise with 0's to expand 32x16 to 32x32
+#     x = TimeDistributed(Lambda(padder), name="padder")(x) # (None, 32, 32, 1)
+# =============================================================================
     
-    x = DefaultConv2D(filters=256)(x) # (None, 2, 32, 256)
-    x = BatchNormalization()(x)
-    x = Activation(activation="relu")(x)
-    x = MaxPool2D(pool_size=(2,1))(x) # (None, 1, 32, 256)
+# =============================================================================
+#     # expand 32x16 to 32x32 deconvolution
+#     x = TimeDistributed(Conv2DTranspose(filters=1, 
+#                         kernel_size=3,
+#                         strides=(1,2), 
+#                         padding='same'), name='expand_patch')(x) # (None, 32, 32, 1)
+# =============================================================================
+    
+    cnn = CNN(n_classes-1, reg=reg, compile_model=False)
+    if cnn_weights_path:
+        cnn.load_weights(cnn_weights_path)
+    cnn = Model(inputs=cnn.inputs, outputs=cnn.layers[-2].output)
+    #cnn.trainable = False
+    x = TimeDistributed(cnn, name='convnet')(x) # (None, num_windows, 512) 
 
-    
 # =============================================================================
-#     for filters in [128] * 4:
-#         x = Residual(filters)(x)
-# 
-#     x = Residual(256, strides=2)(x) # (None, 32, 4, 256)
-#     for filters in [256] * 5:
-#         x = Residual(filters)(x)
-#         
-#     x = MaxPool2D(pool_size=(1,2))(x) # (None, 32, 2, 256)
+#     # CNN to RNN
+#     x = Conv1D(filters=256, 
+#                kernel_size=3,
+#                kernel_initializer="he_normal",
+#                padding="same")(x) # (None, num_windows, 256)
 # =============================================================================
-        
-    # CNN to RNN
-    x = Reshape((32,256))(x) # (None, 32, 256)
-    x = Conv1D(filters=256, 
-               kernel_size=5,
-               kernel_initializer="he_normal",
-               padding="same")(x)
     
     # RNN
     x = Bidirectional(
             GRU(units=256, 
                 return_sequences=True, 
-                kernel_initializer="he_normal"))(x)  # (None, 32, 512)
+                kernel_initializer="he_normal"))(x)  # (None, num_windows, 512)
     x = BatchNormalization()(x)
     
-    x = Bidirectional(
-            GRU(units=256, 
-                return_sequences=True, 
-                kernel_initializer="he_normal"))(x)  # (None, 32, 512)
-    x = BatchNormalization()(x)
+# =============================================================================
+#     x = Bidirectional(
+#             GRU(units=256, 
+#                 return_sequences=True, 
+#                 kernel_initializer="he_normal"))(x)  # (None, num_windows, 512)
+#     x = BatchNormalization()(x)
+# =============================================================================
     
     
     y_pred = Dense(n_classes,
                    activation="softmax",
-                   name="logits_layer")(x) # (None, 32, 63)
+                   name="logits_layer")(x) # (None, num_windows, 63)
     
     model = Model(inputs=images, 
                   outputs=y_pred)
     
-    logit_length = [model.layers[-1].output_shape[1]] * batch_size 
+    logit_length = [[model.layers[-1].output_shape[1]] * batch_size]
     
     # Optimizer
     if optimizer_type == "sgd":
@@ -103,7 +97,6 @@ def CRNN(n_classes, batch_size,
     elif optimizer_type == "adam":
         optimizer = Adam(lr=lr)
 
-    #TODO implement bleu score metric, implement ctc beam search loss
     model.compile(loss=CTCLoss(logit_length=logit_length),
                   optimizer=optimizer,
                   metrics=[LevenshteinMetric(batch_size=batch_size)])

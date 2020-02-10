@@ -1,7 +1,7 @@
 import numpy as np
-import cv2
 import pandas as pd
 import tensorflow as tf
+import matplotlib.pyplot as plt
 
 from scipy import io as spio
 from functools import partial
@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.abspath('..'));
 
 BUFFER_SIZE = 100000
 
-labels = " 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+labels = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz "
 
 class DataLoader():
     
@@ -33,7 +33,7 @@ class DataLoader():
         annots_raw['annotation'].astype('|S').str.decode("utf-8")
         max_str_len = max(annots_raw['annotation'].str.len())
         
-        annots_raw = annots_raw[466000:]
+        #annots_raw = annots_raw[:462041]
         
         df, test = train_test_split(annots_raw, test_size=test_split, 
                                        random_state=seed)
@@ -45,14 +45,11 @@ class DataLoader():
 #         test = test[:int(len(test)*.00005)]
 # =============================================================================
         
-        train = annots_raw[-1:]
-        valid = valid[:1]
-        test = test[:1]
+        train = train[9999:10000]
+        valid = valid[999:1000]
+        test = test[:2000]
         
-        print(train)
-        print(valid)
-        print(test)
-        
+        print('TRAIN DATA', train)
         
         vf = np.vectorize(partial(labels_to_index_list, 
                                   max_str_len=max_str_len))
@@ -126,16 +123,24 @@ def labels_to_index_list(text, max_str_len):
     index_list.append(initial_text_len)
     return np.array(index_list, dtype=object)
 
+def show_img(x, scaled=True):
+    if scaled:
+        x = tf.cast((x+.5)*255.0, tf.int32)
+    x = np.squeeze(x)
+    plt.imshow(x, cmap="hot")
+    plt.show()
+    
+def decode(x):
+    return ''.join([labels[char] for char in x[:x[-1]]])
+
 if __name__=="__main__":
     data = DataLoader(2)
     
     gen, steps = data.load_text_data()
-    for input, y_true in gen.take(1):
-        print(input)
-        print("---------------------")
-        print(y_true)
+    for img, y_true in gen.take(5):
+        show_img(img[0])
         y_true = y_true.numpy().astype(np.int32)
-        print(y_true)
+        print(decode(y_true[0]))
 # =============================================================================
 #         # the labels length is set at the last index of every y_true
 #         label_length = \
