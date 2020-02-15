@@ -64,7 +64,7 @@ if __name__=="__main__":
     #####################################################################
     
     # test image ("midbrains")
-    test_image = tf.io.read_file("../data/word_images/data/684563.png")
+    test_image = tf.io.read_file("../data/word_images/data/808578.png")
     # test image ("detestable")
     #test_image = tf.io.read_file("../data/word_images/data/100026.png")
     test_image = tf.image.decode_png(test_image, channels=1)
@@ -138,12 +138,11 @@ if __name__=="__main__":
         t_scaled = tf.expand_dims(t_scaled, axis=0)
         index = cnn.predict(t_scaled)
         pred_prob = int(np.max(index)*100)
-        print(pred_prob)
         probs.append(pred_prob)
         index = np.argmax(index)
         pred = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"[index]
-        print(pred)
         word.append(pred)
-        break
-    print(probs)    
-    print(word)
+# =============================================================================
+#     print(probs)    
+#     print(word)
+# =============================================================================

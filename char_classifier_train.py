@@ -93,55 +93,53 @@ if __name__=="__main__":
     end = time.time()
     print(end - start)
     
+    # Experiments
+    experiment_notes = "Experiment 7: Modified LeNet
+    
 # =============================================================================
-#     # Experiments
-#     experiment_notes = "Experiment 7: Modified LeNet
-#     
-# # =============================================================================
-# #     experiment_2_notes = "Experiment 1: (Additional Dense layer)\n" + 
-# #     "Dropout | Conv-Batch-LeakyReLU-MaxPool x 5 |" + 
-# #     "Flatten | Dropout | Dense x 2 | Softmax"
-# # =============================================================================
-#     
-#     wandb.init(project="ocr",
-#                name="lenet_experiment_1",
-#                notes=experiment_notes,
-#                config={
-#                        "epochs": 10,
-#                        "optimizer": "adam",
-#                        "learning_rate": 3e-4,
-#                        "l2_reg": 1e-2,
-#                        "dropout_chance": 0.5,
-#                        })
-#     config = wandb.config
-#     
-#     callbacks = get_callbacks()
-#     
-# # =============================================================================
-# #     model = CNN(num_classes, 
-# #                 lr=config.learning_rate, 
-# #                 dropout_chance=config.dropout_chance,
-# #                 optimizer_type=config.optimizer,
-# #                 reg=config.l2_reg)
-# # =============================================================================
-#     
-#     model = LeNet(num_classes, 
-#                   lr=config.learning_rate, 
-#                   dropout_chance=config.dropout_chance,
-#                   optimizer_type=config.optimizer,
-#                   reg=config.l2_reg)
-#     
-#     start = time.time()
-#     model.fit(train, 
-#               epochs=config.epochs,
-#               steps_per_epoch=steps_per_epoch,
-#               validation_data=valid,
-#               validation_steps=validation_steps,
-#               callbacks=callbacks,
-#               verbose=1)
-#     end = time.time()
-#     print(end - start)
+#     experiment_2_notes = "Experiment 1: (Additional Dense layer)\n" + 
+#     "Dropout | Conv-Batch-LeakyReLU-MaxPool x 5 |" + 
+#     "Flatten | Dropout | Dense x 2 | Softmax"
 # =============================================================================
+    
+    wandb.init(project="ocr",
+               name="lenet_experiment_1",
+               notes=experiment_notes,
+               config={
+                       "epochs": 10,
+                       "optimizer": "adam",
+                       "learning_rate": 3e-4,
+                       "l2_reg": 1e-2,
+                       "dropout_chance": 0.5,
+                       })
+    config = wandb.config
+    
+    callbacks = get_callbacks()
+    
+# =============================================================================
+#     model = CNN(num_classes, 
+#                 lr=config.learning_rate, 
+#                 dropout_chance=config.dropout_chance,
+#                 optimizer_type=config.optimizer,
+#                 reg=config.l2_reg)
+# =============================================================================
+    
+    model = LeNet(num_classes, 
+                  lr=config.learning_rate, 
+                  dropout_chance=config.dropout_chance,
+                  optimizer_type=config.optimizer,
+                  reg=config.l2_reg)
+    
+    start = time.time()
+    model.fit(train, 
+              epochs=config.epochs,
+              steps_per_epoch=steps_per_epoch,
+              validation_data=valid,
+              validation_steps=validation_steps,
+              callbacks=callbacks,
+              verbose=1)
+    end = time.time()
+    print(end - start)
     
 # =============================================================================
 #     train_notes = "Full Train 1: (lenet model)"

@@ -11,7 +11,6 @@ class CTCLoss(tf.losses.Loss):
 
     def call(self, y_true, y_pred):
         labels, label_length = get_labels(y_true)
-        label_length = tf.expand_dims(label_length, axis=1) # for batch cost
         return tf.reduce_mean(tf.keras.backend.ctc_batch_cost(
             y_true=labels,
             y_pred=y_pred,
@@ -52,8 +51,11 @@ def py_get_labels2(y_true):
     # the labels length is set at the last index of every y_true
     label_length = \
     np.array([i[-1] for i in y_true]).astype(np.int32)
-    labels = np.array(y_true[0][:-1])
-    labels = np.expand_dims(labels, axis=0)
+    labels = np.array(y_true[:,:-1])
+    #labels = np.expand_dims(labels, axis=0)
+    label_length = np.expand_dims(label_length, axis=1)
+    #tf.print('y_true shape', labels.shape)
+    #tf.print('label_length shape', label_length.shape)
     return labels, label_length
 
 def labels_to_index_list(text, max_str_len):
@@ -204,7 +206,7 @@ if __name__=="__main__":
     
     #logit_length = np.array([32])
     logit_length = np.array([[32]]) # for batch cost
-    label_length = np.expand_dims(label_length, axis=1) # for batch cost
+    #label_length = np.expand_dims(label_length, axis=1) # for batch cost
     
     labels = tf.convert_to_tensor(labels)
     label_length = tf.convert_to_tensor(label_length)

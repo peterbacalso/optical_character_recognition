@@ -39,17 +39,18 @@ class DataLoader():
                                        random_state=seed)
         train, valid = train_test_split(df, test_size=valid_split,
                                               random_state=seed)
+        train = train[:int(len(train)*.05)]
+        valid = valid[:int(len(valid)*.05)]
+        test = test[:int(len(test)*.05)]
+        
+        print(len(train))
 # =============================================================================
-#         train = train[:int(len(train)*.00005)]
-#         valid = valid[:int(len(valid)*.00005)]
-#         test = test[:int(len(test)*.00005)]
+#         train = train[16041:16042]
+#         valid = valid[9999:10000]
+#         test = test[:2000]
 # =============================================================================
         
-        train = train[9999:10000]
-        valid = valid[999:1000]
-        test = test[:2000]
-        
-        print('TRAIN DATA', train)
+        #print('TRAIN DATA', train)
         
         vf = np.vectorize(partial(labels_to_index_list, 
                                   max_str_len=max_str_len))

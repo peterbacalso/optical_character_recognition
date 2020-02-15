@@ -1,4 +1,5 @@
 import tensorflow as tf
+import numpy as np
 from functools import partial
 from tensorflow.keras.regularizers import l2
 from tensorflow.keras.optimizers import SGD, Adam
@@ -21,7 +22,7 @@ from models.cnn import CNN
 def CRNN(n_classes, batch_size, 
          optimizer_type="sgd", training=True,
          lr=.001, reg=1e-6, dropout_chance=0.2,
-         cnn_weights_path=None):
+         cnn_weights_path=None, compile_model=True):
     
     images = Input(shape=(32,128,1), name='images')
     #x = Dropout(0.2)(images)
@@ -87,7 +88,7 @@ def CRNN(n_classes, batch_size,
     model = Model(inputs=images, 
                   outputs=y_pred)
     
-    logit_length = [[model.layers[-1].output_shape[1]] * batch_size]
+    logit_length = [[model.layers[-1].output_shape[1]]] * batch_size
     
     # Optimizer
     if optimizer_type == "sgd":
@@ -96,12 +97,12 @@ def CRNN(n_classes, batch_size,
         optimizer = SGD(lr=lr, momentum=0.9, decay=0.01, nesterov=True)
     elif optimizer_type == "adam":
         optimizer = Adam(lr=lr)
-
-    model.compile(loss=CTCLoss(logit_length=logit_length),
-                  optimizer=optimizer,
-                  metrics=[LevenshteinMetric(batch_size=batch_size)])
-    
-    print(model.summary())
+        
+    if compile_model:
+        model.compile(loss=CTCLoss(logit_length=logit_length),
+                      optimizer=optimizer,
+                      metrics=[LevenshteinMetric(batch_size=batch_size)])
+        print(model.summary())
     
     return model
 
