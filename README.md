@@ -4,6 +4,7 @@ This OCR model was built using a multi-model deep learning architecture, namely 
 The model is able to recognize words in 3 steps. The first step breaks up the image in to overlapping patches accross the width and run them through the CNN which will generate an embedding for each patch. 
 
 ![](https://github.com/peterbacalso/ocr/blob/master/assets/demo.gif)
+
 "showcase"
 
 The second step is to then feed these embeddings to the GRU which will output the likelihood of each class for each patch. 
