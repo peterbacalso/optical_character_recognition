@@ -1,11 +1,9 @@
 data/word_images/data/*
 data/word_images/emnist/*
 data/word_images/fonts/*
-data/fonts/
 data/y_true.csv
 data/characters/*
 checkpoints/*
-assets/*
 wandb/*
 *.spyproject*
 *.pyc
